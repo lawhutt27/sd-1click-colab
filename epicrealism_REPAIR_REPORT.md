@@ -14,7 +14,7 @@ The notebook keeps its original layout: the main setup and launch cell, the LoRA
 |---|---|---|
 | 1 | **Added a Python 3.10 environment** in `/content/sdenv`, set up with `uv`. The WebUI runs as `/content/sdenv/bin/python launch.py` | Colab's runtime 2026.10 uses Python 3.13 on Ubuntu 24.04 ([Colab runtime versions](https://research.google.com/colaboratory/runtime-version-faq.html)). WebUI 1.5.1 needs torch 2.0.1, numpy 1.23.5 and gradio 3.32. None of these install on Python 3.13, and gradio 3.32 also imports `audioop`, which Python 3.13 removed. |
 | 2 | **`REQS_FILE="requirements_versions.txt"`** (the original used `requirements.txt`) | `requirements.txt` in WebUI 1.5.1 has almost no version pins, so every run installed the latest numpy 2, Pillow, pydantic 2 and so on, and the 2023 code broke. `requirements_versions.txt` is the pinned list shipped with the WebUI. |
-| 3 | **A constraints file** (`/content/constraints.txt`, applied through `PIP_CONSTRAINT`) | It keeps `launch.py` and the extension installers from upgrading packages past what this WebUI supports. Each pin is explained in section 3. |
+| 3 | **A constraints file** (`/content/constraints.txt`, applied through `PIP_CONSTRAINT`) | It keeps `launch.py` and the extension installers from upgrading packages past what this WebUI supports. After the zip is unpacked, the notebook reads MicrosoftExcel's own `requirements_versions.txt`, adds only the packages that file doesn't pin, and prints both lists. MicrosoftExcel's pins always win. The first Colab run showed that MicrosoftExcel's pins differ from stock 1.5.1: for example, it pins `fastapi==0.90.0` where stock has 0.94.0. Each extra pin is explained in section 3. |
 | 4 | **`STABLE_DIFFUSION_REPO=https://github.com/w-e-w/stablediffusion.git`** | `github.com/Stability-AI/stablediffusion` is gone: `git ls-remote` now asks for a login. `launch.py` clones it at commit `cf1d67a6…` on first start. The w-e-w mirror has that exact commit, and current AUTOMATIC1111 switched to the same mirror (commit `fd68e0c3`, Dec 2025). |
 | 5 | **CLIP is pre-installed with `--no-build-isolation`** | CLIP's `setup.py` needs `pkg_resources`, which recent setuptools no longer ships, so `launch.py`'s own CLIP install fails. AUTOMATIC1111 fixed this the same way in Feb 2026 (commit `76759a18`). |
 | 6 | **`pip==24.0`, `setuptools==69.5.1`** inside the environment | pip 24.1 and later reject `torchsde==0.2.5` (pinned by the WebUI) because of its old-style version specifier. I confirmed pip 24.0 prints that warning. |
@@ -38,7 +38,7 @@ Yes, as far as I could check without a GPU. Nothing found so far requires moving
 
 ## 3. Selected dependency versions
 
-The core versions are WebUI 1.5.1's own `requirements_versions.txt` and `launch_utils.py` defaults. The rest are pins I added because later releases break this WebUI. Several of them were confirmed by testing (see section 8).
+The core versions are whatever MicrosoftExcel's `requirements_versions.txt` pins (the notebook prints that list). The table below shows stock 1.5.1's values for reference; MicrosoftExcel's file differs at least for fastapi (0.90.0). The rows in bold, plus the other "later releases broke" rows, are pins the notebook adds only when MicrosoftExcel's file leaves that package unpinned. `gradio_client` is pinned to the exact version that MicrosoftExcel's gradio release requires, looked up on PyPI at run time (0.2.4 for gradio 3.32.0).
 
 | Package | Version | Source / reason |
 |---|---|---|
@@ -48,8 +48,8 @@ The core versions are WebUI 1.5.1's own `requirements_versions.txt` and `launch_
 | numpy | 1.23.5 | requirements_versions.txt |
 | Pillow | 9.5.0 | requirements_versions.txt |
 | gradio | 3.32.0 | requirements_versions.txt |
-| **gradio_client** | **0.2.5** | **Confirmed break:** gradio 3.32 accepts any `gradio_client>=0.2.4`, so pip installed 2.7.1, and `import gradio` then fails (`cannot import name 'media_data'`). |
-| fastapi | 0.94.0 | requirements_versions.txt |
+| **gradio_client** | **the lower bound of the WebUI's gradio (0.2.4 for 3.32.0)** | **Confirmed break:** gradio 3.32 accepts any `gradio_client>=0.2.4`, so pip installed 2.7.1, and `import gradio` then fails (`cannot import name 'media_data'`). |
+| fastapi | 0.90.0 in MicrosoftExcel (0.94.0 in stock 1.5.1) | requirements_versions.txt. Tested: fastapi 0.90.0 with starlette 0.23 and gradio 3.32 serves pages and queue calls |
 | pydantic | <2 (gets 1.10.x) | fastapi 0.94 and gradio 3.32 need pydantic 1 |
 | httpx | 0.24.1 | gradio 3.x breaks on httpx 0.28 |
 | **websockets** | **11.0.3** | **Confirmed break:** websockets 16 changed its API, and gradio's queue client fails (`unexpected keyword argument 'extra_headers'`). |
@@ -140,6 +140,7 @@ From the [Colab FAQ](https://research.google.com/colaboratory/faq.html): free ru
 | Importing the whole dependency stack (torch, xformers, gradio, fastapi, pydantic, transformers, open_clip, basicsr, gfpgan, realesrgan, cv2 and more) | ✅ after adding the gradio_client pin; ❌ without it |
 | A small gradio 3.32 app with the queue on, page load plus a call over websockets | ✅ after adding the websockets/uvicorn pins; ❌ without them |
 | ControlNet, Tunnels and ADetailer dependencies installed; ControlNet, ADetailer, Deforum, SuperMerger, TemporalKit and roop dependencies resolved | ✅ after adding the mediapipe pin, which keeps `mediapipe.solutions` |
+| Your first Colab run (Law) | ❌ `ResolutionImpossible`: MicrosoftExcel pins `fastapi==0.90.0`, which clashed with my hard-coded 0.94.0. Fixed: the extra pins now skip anything MicrosoftExcel pins. I re-tested with fastapi 0.90.0 and the matching gradio_client 0.2.4: the install resolves, and the gradio page and queue calls work. |
 | Notebook cells parse as valid IPython, including the Drive block once uncommented | ✅ |
 | Drive folder-linking commands, run twice against test folders | ✅ files preserved, links correct |
 
